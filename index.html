@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raumverleih Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">H-BRS Raumverleih</p>
+        <h1>Welche Raeume sind gerade frei?</h1>
+        <p class="hero-copy">
+          Die Uebersicht kombiniert feste Wochenbelegungen mit aktuellen Ausleihen und zeigt sofort,
+          welche Raeume jetzt verfuegbar sind.
+        </p>
+      </div>
+      <div class="clock-card">
+        <p>Stand</p>
+        <strong id="liveDate">-</strong>
+        <span id="liveTime">-</span>
+      </div>
+    </header>
+
+    <nav class="app-menu" aria-label="Hauptnavigation">
+      <button class="menu-button active" type="button" data-view="dashboard" aria-selected="true">
+        Raumuebersicht
+      </button>
+      <button class="menu-button" type="button" data-view="loans" aria-selected="false">
+        Alle Ausleihen
+      </button>
+    </nav>
+
+    <main id="dashboardView" class="layout">
+      <section class="panel panel-wide">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Live Status</p>
+            <h2>Raumstatus jetzt</h2>
+          </div>
+          <div class="stats" id="stats"></div>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-field">
+            <span>Suchen</span>
+            <input id="searchInput" type="search" placeholder="z. B. C115 oder C130">
+          </label>
+
+          <label>
+            <span>Gebaeude</span>
+            <select id="buildingFilter">
+              <option value="all">Alle</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Status</span>
+            <select id="statusFilter">
+              <option value="all">Alle</option>
+              <option value="free">Frei</option>
+              <option value="loaned">Ausgeliehen</option>
+              <option value="scheduled">Belegt</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="sync-box">
+          <p id="syncInfo" class="sync-info"></p>
+          <div class="sync-actions">
+            <button id="syncNowButton" class="ghost-btn" type="button">Jetzt synchronisieren</button>
+            <span id="syncHint" class="sync-hint"></span>
+          </div>
+        </div>
+        <div class="rooms-grid" id="roomsGrid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header compact">
+          <div>
+            <p class="panel-kicker">Ausleihe</p>
+            <h2>Raum ausleihen</h2>
+          </div>
+        </div>
+
+        <form id="loanForm" class="stack">
+          <label>
+            <span>Raum</span>
+            <select id="loanRoom" required></select>
+          </label>
+
+          <label>
+            <span>Wer leiht?</span>
+            <input id="loanPerson" type="text" placeholder="Name oder Team" required>
+          </label>
+
+          <label>
+            <span>Zweck</span>
+            <input id="loanPurpose" type="text" placeholder="Workshop, Besprechung, Event">
+          </label>
+
+          <p class="form-hint">Der Ausleihbeginn wird beim Speichern automatisch auf die aktuelle Zeit gesetzt.</p>
+
+          <label>
+            <span>Notiz</span>
+            <textarea id="loanNotes" rows="3" placeholder="Optional"></textarea>
+          </label>
+
+          <button type="submit" class="primary-btn">Ausleihe speichern</button>
+          <p id="loanStorageInfo" class="form-hint">Ausleihen werden in daten/ausleihen.json gespeichert.</p>
+        </form>
+
+        <div class="subsection">
+          <h3>Heutige offene Ausleihen</h3>
+          <div id="openLoansToday" class="list active-loans-list"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header compact">
+          <div>
+            <p class="panel-kicker">Wochenplan</p>
+            <h2>Feste Belegung</h2>
+          </div>
+        </div>
+
+        <form id="scheduleForm" class="stack">
+          <label>
+            <span>Raum</span>
+            <select id="scheduleRoom" required></select>
+          </label>
+
+          <label>
+            <span>Tag</span>
+            <select id="scheduleDay" required>
+              <option value="1">Montag</option>
+              <option value="2">Dienstag</option>
+              <option value="3">Mittwoch</option>
+              <option value="4">Donnerstag</option>
+              <option value="5">Freitag</option>
+              <option value="6">Samstag</option>
+              <option value="0">Sonntag</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Von</span>
+            <input id="scheduleStart" type="time" required>
+          </label>
+
+          <label>
+            <span>Bis</span>
+            <input id="scheduleEnd" type="time" required>
+          </label>
+
+          <label>
+            <span>Termin</span>
+            <input id="scheduleTitle" type="text" placeholder="Vorlesung, Labor, Blocktermin" required>
+          </label>
+
+          <button type="submit" class="primary-btn">Wochenblock speichern</button>
+        </form>
+
+        <div class="subsection">
+          <h3>Gespeicherte Wochenbloecke</h3>
+          <div id="scheduleList" class="list"></div>
+        </div>
+      </section>
+    </main>
+
+    <section id="loanHistoryView" class="panel history-view" hidden>
+      <div class="panel-header history-view-header">
+        <div>
+          <p class="panel-kicker">Dauerhaft gespeichert</p>
+          <h2>Alle Ausleihen</h2>
+          <p class="history-intro">Hier stehen alle offenen und bereits zurueckgegebenen Raumausleihen.</p>
+        </div>
+        <label class="history-filter">
+          <span>Status</span>
+          <select id="loanHistoryFilter">
+            <option value="all">Alle</option>
+            <option value="open">Noch ausgeliehen</option>
+            <option value="returned">Zurueckgegeben</option>
+          </select>
+        </label>
+      </div>
+      <div id="loanHistory" class="list loan-history-list"></div>
+    </section>
+  </div>
+
+  <template id="roomCardTemplate">
+    <article class="room-card">
+      <div class="room-card-top">
+        <div>
+          <p class="room-building"></p>
+          <h3 class="room-name"></h3>
+        </div>
+        <span class="room-badge"></span>
+      </div>
+      <p class="room-detail"></p>
+      <p class="room-next"></p>
+      <div class="room-card-actions"></div>
+    </article>
+  </template>
+
+  <script src="eva2-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

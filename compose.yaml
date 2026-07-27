@@ -1,0 +1,20 @@
+services:
+  raumverleih:
+    build:
+      context: .
+    container_name: raumverleih
+    restart: unless-stopped
+    ports:
+      - "${RAUMVERLEIH_BIND_ADDRESS:-0.0.0.0}:${RAUMVERLEIH_PORT:-8000}:8000"
+    environment:
+      EVA2_SYNC_INTERVAL_MINUTES: "${EVA2_SYNC_INTERVAL_MINUTES:-60}"
+      RAUMVERLEIH_DATA_DIR: /app/daten
+      TZ: "${TZ:-Europe/Berlin}"
+    volumes:
+      - ./daten:/app/daten
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
