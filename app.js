@@ -34,8 +34,6 @@ const loanHistoryEl = document.querySelector("#loanHistory");
 const scheduleListEl = document.querySelector("#scheduleList");
 const liveDateEl = document.querySelector("#liveDate");
 const liveTimeEl = document.querySelector("#liveTime");
-const syncInfoEl = document.querySelector("#syncInfo");
-const syncHintEl = document.querySelector("#syncHint");
 const loanStorageInfoEl = document.querySelector("#loanStorageInfo");
 const template = document.querySelector("#roomCardTemplate");
 const dashboardView = document.querySelector("#dashboardView");
@@ -54,7 +52,6 @@ const loanHistoryFilter = document.querySelector("#loanHistoryFilter");
 
 const loanForm = document.querySelector("#loanForm");
 const scheduleForm = document.querySelector("#scheduleForm");
-const syncNowButton = document.querySelector("#syncNowButton");
 const loanRoomSelect = document.querySelector("#loanRoom");
 const loanPersonInput = document.querySelector("#loanPerson");
 
@@ -68,7 +65,6 @@ async function init() {
   showView(getViewFromHash(), false);
   render();
   updateClock();
-  renderSyncInfo();
   await checkForScheduleUpdate();
   setInterval(() => {
     updateClock();
@@ -142,7 +138,6 @@ function bindEvents() {
     render();
   });
 
-  syncNowButton.addEventListener("click", handleSyncButtonClick);
 }
 
 function getViewFromHash() {
@@ -437,52 +432,6 @@ function renderScheduleList() {
   attachDeleteHandlers('[data-action="delete-schedule"]', state.schedules, STORAGE_KEYS.schedules);
 }
 
-function renderSyncInfo() {
-  const importedRooms = Object.keys(IMPORTED_DATA.rooms || {}).filter((room) => (IMPORTED_DATA.rooms[room] || []).length > 0);
-  const unavailableRooms = IMPORTED_DATA.unavailableRooms || [];
-
-  if (!IMPORTED_DATA.generatedAt) {
-    syncInfoEl.textContent = "Kein eva2-Import vorhanden. Klicke auf Jetzt synchronisieren, um die Stundenplandaten zu laden.";
-    return;
-  }
-
-  const segments = [
-    `eva2-Sync: ${formatDateTime(IMPORTED_DATA.generatedAt)}`,
-    `${importedRooms.length} Raeume importiert`
-  ];
-
-  if (unavailableRooms.length) {
-    segments.push(`Kein eva2-Raum: ${unavailableRooms.join(", ")}`);
-  }
-
-  syncInfoEl.textContent = segments.join(" | ");
-  syncHintEl.textContent = "Der Button laedt die aktuellen eva2-Daten direkt neu.";
-}
-
-async function handleSyncButtonClick() {
-  syncNowButton.disabled = true;
-  syncNowButton.textContent = "Synchronisiere...";
-  syncHintEl.textContent = "Stundenplaene werden von eva2 geladen. Bitte kurz warten.";
-
-  try {
-    const response = await fetch("/api/sync", { method: "POST" });
-    const result = await response.json();
-
-    if (!response.ok || !result.synced) {
-      throw new Error(result.error || "Synchronisierung fehlgeschlagen.");
-    }
-
-    syncHintEl.textContent = "Synchronisierung erfolgreich. Die Seite wird neu geladen.";
-    reloadPageWithCacheBuster();
-  } catch (error) {
-    syncHintEl.textContent = "Synchronisierung fehlgeschlagen. Bitte die Seite ueber start_server.bat starten.";
-    window.alert(error.message || "Synchronisierung fehlgeschlagen.");
-  } finally {
-    syncNowButton.disabled = false;
-    syncNowButton.textContent = "Jetzt synchronisieren";
-  }
-}
-
 async function checkForScheduleUpdate() {
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -491,12 +440,6 @@ async function checkForScheduleUpdate() {
     }
 
     const health = await response.json();
-    if (health.externalSync) {
-      syncNowButton.disabled = true;
-      syncNowButton.textContent = "Automatischer Sync aktiv";
-      syncHintEl.textContent = "eva2 wird kostenlos im Hintergrund ueber GitHub Actions aktualisiert.";
-    }
-
     if (!health.scheduleVersion) {
       return;
     }
