@@ -689,6 +689,10 @@ select:disabled {
   .schedule-layout {
     grid-template-columns: 1fr;
   }
+
+  .sync-box {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
