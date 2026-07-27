@@ -40,7 +40,12 @@ const loanStorageInfoEl = document.querySelector("#loanStorageInfo");
 const template = document.querySelector("#roomCardTemplate");
 const dashboardView = document.querySelector("#dashboardView");
 const loanHistoryView = document.querySelector("#loanHistoryView");
+const scheduleView = document.querySelector("#scheduleView");
 const menuButtons = document.querySelectorAll("[data-view]");
+const menuFreeCountEl = document.querySelector("#menuFreeCount");
+const menuLoanCountEl = document.querySelector("#menuLoanCount");
+const availabilitySummaryEl = document.querySelector("#availabilitySummary");
+const loanPanelEl = document.querySelector("#loanPanel");
 
 const searchInput = document.querySelector("#searchInput");
 const buildingFilter = document.querySelector("#buildingFilter");
@@ -50,6 +55,8 @@ const loanHistoryFilter = document.querySelector("#loanHistoryFilter");
 const loanForm = document.querySelector("#loanForm");
 const scheduleForm = document.querySelector("#scheduleForm");
 const syncNowButton = document.querySelector("#syncNowButton");
+const loanRoomSelect = document.querySelector("#loanRoom");
+const loanPersonInput = document.querySelector("#loanPerson");
 
 init();
 
@@ -139,13 +146,20 @@ function bindEvents() {
 }
 
 function getViewFromHash() {
-  return window.location.hash === "#ausleihen" ? "loans" : "dashboard";
+  if (window.location.hash === "#ausleihen") {
+    return "loans";
+  }
+  if (window.location.hash === "#wochenplan") {
+    return "schedule";
+  }
+  return "dashboard";
 }
 
 function showView(view, updateHash = true) {
-  const activeView = view === "loans" ? "loans" : "dashboard";
+  const activeView = ["dashboard", "loans", "schedule"].includes(view) ? view : "dashboard";
   dashboardView.hidden = activeView !== "dashboard";
   loanHistoryView.hidden = activeView !== "loans";
+  scheduleView.hidden = activeView !== "schedule";
 
   menuButtons.forEach((button) => {
     const isActive = button.dataset.view === activeView;
@@ -154,7 +168,12 @@ function showView(view, updateHash = true) {
   });
 
   if (updateHash) {
-    const nextHash = activeView === "loans" ? "#ausleihen" : "#uebersicht";
+    const hashes = {
+      dashboard: "#uebersicht",
+      loans: "#ausleihen",
+      schedule: "#wochenplan"
+    };
+    const nextHash = hashes[activeView];
     if (window.location.hash !== nextHash) {
       window.history.pushState(null, "", nextHash);
     }
@@ -162,6 +181,9 @@ function showView(view, updateHash = true) {
 
   if (activeView === "loans") {
     renderLoanHistory();
+  }
+  if (activeView === "schedule") {
+    renderScheduleList();
   }
 }
 
@@ -183,16 +205,28 @@ function renderStats() {
     loaned: statuses.filter((entry) => entry.type === "loaned").length,
     scheduled: statuses.filter((entry) => entry.type === "scheduled").length
   };
+  const openLoanCount = state.loans.filter((loan) => isLoanOpenAt(loan, now)).length;
+
+  menuFreeCountEl.textContent = `${totals.free} frei`;
+  menuLoanCountEl.textContent = `${openLoanCount} offen`;
+
+  if (totals.free === ROOMS.length) {
+    availabilitySummaryEl.textContent = `Alle ${ROOMS.length} Raeume sind aktuell frei.`;
+  } else if (!totals.free) {
+    availabilitySummaryEl.textContent = "Aktuell ist kein Raum frei.";
+  } else {
+    availabilitySummaryEl.textContent = `${totals.free} von ${ROOMS.length} Raeumen sind aktuell frei.`;
+  }
 
   statsEl.innerHTML = "";
   [
-    ["Gesamt", totals.total],
-    ["Frei", totals.free],
-    ["Ausgeliehen", totals.loaned],
-    ["Belegt", totals.scheduled]
-  ].forEach(([label, value]) => {
+    ["total", "Gesamt", totals.total],
+    ["free", "Frei", totals.free],
+    ["loaned", "Ausgeliehen", totals.loaned],
+    ["scheduled", "Belegt", totals.scheduled]
+  ].forEach(([key, label, value]) => {
     const card = document.createElement("div");
-    card.className = "stat-card";
+    card.className = `stat-card stat-${key}`;
     card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
     statsEl.appendChild(card);
   });
@@ -243,8 +277,27 @@ function renderRooms() {
       node.querySelector(".room-card-actions").appendChild(returnButton);
     }
 
+    if (status.type === "free") {
+      const loanButton = document.createElement("button");
+      loanButton.type = "button";
+      loanButton.className = "room-loan-btn";
+      loanButton.textContent = "Diesen Raum ausleihen";
+      loanButton.addEventListener("click", () => beginLoanForRoom(room));
+      node.querySelector(".room-card-actions").appendChild(loanButton);
+    }
+
     roomsGridEl.appendChild(node);
   });
+}
+
+function beginLoanForRoom(room) {
+  showView("dashboard");
+  renderLoanRoomOptions();
+  loanRoomSelect.value = room;
+  loanPanelEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  loanPanelEl.classList.add("attention");
+  window.setTimeout(() => loanPanelEl.classList.remove("attention"), 1200);
+  loanPersonInput.focus({ preventScroll: true });
 }
 
 function renderOpenLoansToday() {
@@ -551,12 +604,15 @@ function getRoomStatus(room, now) {
     nextImported,
     nextManual
   ]);
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+  const freeUntil = nextEvent && isSameLocalDay(nextEvent.date, now) ? nextEvent.date : endOfToday;
 
   return {
     type: "free",
     label: "Frei",
-    detail: nextEvent ? `Noch ${formatDuration(nextEvent.date - now)} frei` : "Keine Zeitbegrenzung bekannt",
-    next: nextEvent ? `Frei bis ${formatTime(nextEvent.date)} Uhr` : "Durchgehend frei"
+    detail: `Noch ${formatDuration(freeUntil - now)} frei`,
+    next: `Frei bis ${formatTime(freeUntil)} Uhr`
   };
 }
 
@@ -729,7 +785,7 @@ function populateRoomSelects() {
 }
 
 function renderLoanRoomOptions() {
-  const select = document.querySelector("#loanRoom");
+  const select = loanRoomSelect;
   const submitButton = loanForm.querySelector('button[type="submit"]');
   const selectedRoom = select.value;
   const now = new Date();
