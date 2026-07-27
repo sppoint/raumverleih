@@ -35,9 +35,6 @@
         <span>Alle Ausleihen</span>
         <span id="menuLoanCount" class="menu-count">0 offen</span>
       </button>
-      <button class="menu-button" type="button" data-view="schedule" aria-selected="false">
-        Wochenplan
-      </button>
     </nav>
 
     <main id="dashboardView" class="layout">
@@ -102,15 +99,12 @@
             <input id="loanPurpose" type="text" placeholder="Workshop, Besprechung, Event">
           </label>
 
-          <p class="form-hint">Der Ausleihbeginn wird beim Speichern automatisch auf die aktuelle Zeit gesetzt.</p>
-
           <label>
             <span>Notiz</span>
             <textarea id="loanNotes" rows="3" placeholder="Optional"></textarea>
           </label>
 
           <button type="submit" class="primary-btn">Ausleihe speichern</button>
-          <p id="loanStorageInfo" class="form-hint">Ausleihen werden in daten/ausleihen.json gespeichert.</p>
         </form>
 
         <div class="subsection">
@@ -127,73 +121,24 @@
           <h2>Alle Ausleihen</h2>
           <p class="history-intro">Hier stehen alle offenen und bereits zurueckgegebenen Raumausleihen.</p>
         </div>
-        <label class="history-filter">
-          <span>Status</span>
-          <select id="loanHistoryFilter">
-            <option value="all">Alle</option>
-            <option value="open">Noch ausgeliehen</option>
-            <option value="returned">Zurueckgegeben</option>
-          </select>
-        </label>
+        <div class="history-controls">
+          <label class="history-search">
+            <span>Suchen</span>
+            <input id="loanHistorySearch" type="search" placeholder="Name, Notiz, Raum oder Datum" autocomplete="off">
+          </label>
+          <label class="history-filter">
+            <span>Status</span>
+            <select id="loanHistoryFilter">
+              <option value="all">Alle</option>
+              <option value="open">Noch ausgeliehen</option>
+              <option value="returned">Zurueckgegeben</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div id="loanHistory" class="list loan-history-list"></div>
     </section>
 
-    <section id="scheduleView" class="panel section-view" hidden>
-      <div class="panel-header section-view-header">
-        <div>
-          <p class="panel-kicker">Manuelle Ergaenzungen</p>
-          <h2>Feste Wochenbelegung</h2>
-          <p class="history-intro">Wiederkehrende Belegungen zusaetzlich zum eva2-Stundenplan eintragen.</p>
-        </div>
-      </div>
-
-      <div class="schedule-layout">
-        <form id="scheduleForm" class="stack schedule-form">
-          <label>
-            <span>Raum</span>
-            <select id="scheduleRoom" required></select>
-          </label>
-
-          <label>
-            <span>Tag</span>
-            <select id="scheduleDay" required>
-              <option value="1">Montag</option>
-              <option value="2">Dienstag</option>
-              <option value="3">Mittwoch</option>
-              <option value="4">Donnerstag</option>
-              <option value="5">Freitag</option>
-              <option value="6">Samstag</option>
-              <option value="0">Sonntag</option>
-            </select>
-          </label>
-
-          <div class="schedule-time-grid">
-            <label>
-              <span>Von</span>
-              <input id="scheduleStart" type="time" required>
-            </label>
-
-            <label>
-              <span>Bis</span>
-              <input id="scheduleEnd" type="time" required>
-            </label>
-          </div>
-
-          <label>
-            <span>Termin</span>
-            <input id="scheduleTitle" type="text" placeholder="Vorlesung, Labor, Blocktermin" required>
-          </label>
-
-          <button type="submit" class="primary-btn">Wochenblock speichern</button>
-        </form>
-
-        <div class="schedule-list-panel">
-          <h3>Gespeicherte Wochenbloecke</h3>
-          <div id="scheduleList" class="list"></div>
-        </div>
-      </div>
-    </section>
   </div>
 
   <template id="roomCardTemplate">

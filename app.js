@@ -14,7 +14,6 @@ const STORAGE_KEYS = {
   schedules: "raumverleih-schedules"
 };
 
-const dayNames = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const IMPORTED_DATA = window.EVA2_SCHEDULE || {
   generatedAt: null,
   rooms: {},
@@ -31,14 +30,11 @@ const statsEl = document.querySelector("#stats");
 const roomsGridEl = document.querySelector("#roomsGrid");
 const openLoansTodayEl = document.querySelector("#openLoansToday");
 const loanHistoryEl = document.querySelector("#loanHistory");
-const scheduleListEl = document.querySelector("#scheduleList");
 const liveDateEl = document.querySelector("#liveDate");
 const liveTimeEl = document.querySelector("#liveTime");
-const loanStorageInfoEl = document.querySelector("#loanStorageInfo");
 const template = document.querySelector("#roomCardTemplate");
 const dashboardView = document.querySelector("#dashboardView");
 const loanHistoryView = document.querySelector("#loanHistoryView");
-const scheduleView = document.querySelector("#scheduleView");
 const menuButtons = document.querySelectorAll("[data-view]");
 const menuFreeCountEl = document.querySelector("#menuFreeCount");
 const menuLoanCountEl = document.querySelector("#menuLoanCount");
@@ -48,10 +44,10 @@ const loanPanelEl = document.querySelector("#loanPanel");
 const searchInput = document.querySelector("#searchInput");
 const buildingFilter = document.querySelector("#buildingFilter");
 const statusFilter = document.querySelector("#statusFilter");
+const loanHistorySearch = document.querySelector("#loanHistorySearch");
 const loanHistoryFilter = document.querySelector("#loanHistoryFilter");
 
 const loanForm = document.querySelector("#loanForm");
-const scheduleForm = document.querySelector("#scheduleForm");
 const loanRoomSelect = document.querySelector("#loanRoom");
 const loanPersonInput = document.querySelector("#loanPerson");
 
@@ -81,6 +77,7 @@ function bindEvents() {
   searchInput.addEventListener("input", renderRooms);
   buildingFilter.addEventListener("change", renderRooms);
   statusFilter.addEventListener("change", renderRooms);
+  loanHistorySearch.addEventListener("input", renderLoanHistory);
   loanHistoryFilter.addEventListener("change", renderLoanHistory);
   menuButtons.forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.view));
@@ -115,46 +112,19 @@ function bindEvents() {
     render();
   });
 
-  scheduleForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-
-    const schedule = {
-      id: crypto.randomUUID(),
-      room: document.querySelector("#scheduleRoom").value,
-      day: Number(document.querySelector("#scheduleDay").value),
-      start: document.querySelector("#scheduleStart").value,
-      end: document.querySelector("#scheduleEnd").value,
-      title: document.querySelector("#scheduleTitle").value.trim()
-    };
-
-    if (schedule.end <= schedule.start) {
-      window.alert("Die Endzeit muss nach der Startzeit liegen.");
-      return;
-    }
-
-    state.schedules.push(schedule);
-    persistState(STORAGE_KEYS.schedules, state.schedules);
-    scheduleForm.reset();
-    render();
-  });
-
 }
 
 function getViewFromHash() {
   if (window.location.hash === "#ausleihen") {
     return "loans";
   }
-  if (window.location.hash === "#wochenplan") {
-    return "schedule";
-  }
   return "dashboard";
 }
 
 function showView(view, updateHash = true) {
-  const activeView = ["dashboard", "loans", "schedule"].includes(view) ? view : "dashboard";
+  const activeView = ["dashboard", "loans"].includes(view) ? view : "dashboard";
   dashboardView.hidden = activeView !== "dashboard";
   loanHistoryView.hidden = activeView !== "loans";
-  scheduleView.hidden = activeView !== "schedule";
 
   menuButtons.forEach((button) => {
     const isActive = button.dataset.view === activeView;
@@ -165,8 +135,7 @@ function showView(view, updateHash = true) {
   if (updateHash) {
     const hashes = {
       dashboard: "#uebersicht",
-      loans: "#ausleihen",
-      schedule: "#wochenplan"
+      loans: "#ausleihen"
     };
     const nextHash = hashes[activeView];
     if (window.location.hash !== nextHash) {
@@ -177,9 +146,6 @@ function showView(view, updateHash = true) {
   if (activeView === "loans") {
     renderLoanHistory();
   }
-  if (activeView === "schedule") {
-    renderScheduleList();
-  }
 }
 
 function render() {
@@ -187,7 +153,6 @@ function render() {
   renderRooms();
   renderOpenLoansToday();
   renderLoanHistory();
-  renderScheduleList();
   renderLoanRoomOptions();
 }
 
@@ -337,6 +302,7 @@ function renderOpenLoansToday() {
 
 function renderLoanHistory() {
   const filter = loanHistoryFilter.value;
+  const query = loanHistorySearch.value.trim().toLocaleLowerCase("de-DE");
   const loans = [...state.loans]
     .filter((loan) => {
       if (filter === "open") {
@@ -347,12 +313,13 @@ function renderLoanHistory() {
       }
       return true;
     })
+    .filter((loan) => matchesLoanHistorySearch(loan, query))
     .sort((a, b) => new Date(b.start) - new Date(a.start));
 
   loanHistoryEl.innerHTML = "";
 
   if (!loans.length) {
-    loanHistoryEl.innerHTML = '<p class="empty-state">Keine Ausleihen fuer diesen Filter gespeichert.</p>';
+    loanHistoryEl.innerHTML = '<p class="empty-state">Keine passenden Ausleihen gefunden.</p>';
     return;
   }
 
@@ -400,36 +367,22 @@ function renderLoanHistory() {
   });
 }
 
-function renderScheduleList() {
-  const sorted = [...state.schedules].sort((a, b) => {
-    if (a.day !== b.day) {
-      return a.day - b.day;
-    }
-    return a.start.localeCompare(b.start);
-  });
-
-  scheduleListEl.innerHTML = "";
-
-  if (!sorted.length) {
-    scheduleListEl.innerHTML = `<p class="empty-state">Noch keine Wochenbloecke gespeichert.</p>`;
-    return;
+function matchesLoanHistorySearch(loan, query) {
+  if (!query) {
+    return true;
   }
 
-  sorted.forEach((entry) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    item.innerHTML = `
-      <div>
-        <strong>${entry.room}</strong>
-        <span>${dayNames[entry.day]}, ${entry.start} bis ${entry.end}</span>
-        <span>${entry.title}</span>
-      </div>
-      <button type="button" data-action="delete-schedule" data-id="${entry.id}">Loeschen</button>
-    `;
-    scheduleListEl.appendChild(item);
-  });
+  const searchableValues = [
+    loan.person,
+    loan.notes,
+    loan.room,
+    loan.start,
+    formatDateTime(loan.start),
+    loan.returnedAt,
+    loan.returnedAt ? formatDateTime(loan.returnedAt) : ""
+  ];
 
-  attachDeleteHandlers('[data-action="delete-schedule"]', state.schedules, STORAGE_KEYS.schedules);
+  return searchableValues.some((value) => String(value || "").toLocaleLowerCase("de-DE").includes(query));
 }
 
 async function checkForScheduleUpdate() {
@@ -451,7 +404,7 @@ async function checkForScheduleUpdate() {
 
     scheduleVersion = health.scheduleVersion;
   } catch {
-    // Die separate Dateispeicher-Anzeige informiert bereits, wenn der Server fehlt.
+    // Die Raumansicht bleibt nutzbar, falls der Gesundheitscheck voruebergehend fehlschlaegt.
   }
 }
 
@@ -459,22 +412,6 @@ function reloadPageWithCacheBuster() {
   const reloadUrl = new URL(window.location.origin);
   reloadUrl.searchParams.set("sync", Date.now().toString());
   window.location.replace(reloadUrl);
-}
-
-function attachDeleteHandlers(selector, collection, storageKey) {
-  document.querySelectorAll(selector).forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.id;
-      const next = collection.filter((entry) => entry.id !== id);
-      if (storageKey === STORAGE_KEYS.loans) {
-        state.loans = next;
-      } else {
-        state.schedules = next;
-      }
-      persistState(storageKey, next);
-      render();
-    });
-  });
 }
 
 async function returnLoan(id) {
@@ -722,8 +659,6 @@ function parseLocalDate(value) {
 }
 
 function populateRoomSelects() {
-  const scheduleSelect = document.querySelector("#scheduleRoom");
-  scheduleSelect.innerHTML = ROOMS.map((room) => `<option value="${room}">${room}</option>`).join("");
   renderLoanRoomOptions();
 }
 
@@ -811,7 +746,6 @@ async function loadLoansFromFile() {
     await persistLoans();
   } catch {
     persistState(STORAGE_KEYS.loans, state.loans);
-    setLoanStorageInfo("Dateispeicherung nicht aktiv. Bitte die Seite ueber start_server.bat starten.", true);
   }
 }
 
@@ -829,17 +763,11 @@ async function persistLoans() {
       throw new Error("Ausleihdatei konnte nicht gespeichert werden.");
     }
 
-    setLoanStorageInfo("Ausleihen werden im Hintergrund in daten/ausleihen.json gespeichert.");
     return true;
   } catch {
-    setLoanStorageInfo("Dateispeicherung fehlgeschlagen. Bitte start_server.bat verwenden.", true);
+    window.alert("Die Ausleihe konnte nicht in der Datei gespeichert werden.");
     return false;
   }
-}
-
-function setLoanStorageInfo(message, isError = false) {
-  loanStorageInfoEl.textContent = message;
-  loanStorageInfoEl.classList.toggle("storage-error", isError);
 }
 
 function normalizeLoans(loans) {
