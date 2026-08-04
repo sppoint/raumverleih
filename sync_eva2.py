@@ -77,7 +77,7 @@ def parse_room_options(index_html: str) -> tuple[str, dict[str, str]]:
 
 def parse_period(period_text: str) -> tuple[str, str, str]:
     period_match = re.search(
-        r"(\d{2}\.\d{2}\.\d{4})-(\d{2}\.\d{2}\.\d{4})\s+\(([^)]+)\)",
+        r"(\d{2}\.\d{2}\.\d{4})-(\d{2}\.\d{2}\.\d{4})(?:\s+\(([^)]+)\))?",
         period_text,
     )
     if not period_match:
@@ -85,7 +85,7 @@ def parse_period(period_text: str) -> tuple[str, str, str]:
 
     start = dt.datetime.strptime(period_match.group(1), "%d.%m.%Y").strftime("%Y-%m-%d")
     end = dt.datetime.strptime(period_match.group(2), "%d.%m.%Y").strftime("%Y-%m-%d")
-    flag = period_match.group(3)
+    flag = period_match.group(3) or ""
 
     if flag.startswith("gKW"):
         week_mode = "even"

@@ -3,156 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Raumverleih Dashboard</title>
+  <meta name="theme-color" content="#f4efe5">
+  <title>Raumstatus Gebaeude C</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="page-shell">
     <header class="hero">
-      <div>
-        <p class="eyebrow">H-BRS Raumverleih</p>
-        <h1>Freie Raeume auf einen Blick.</h1>
-        <p class="hero-copy">
-          Live-Belegung, Ausleihe und Rueckgabe fuer die Raeume im Gebaeude C.
-        </p>
+      <div class="hero-copy">
+        <p class="eyebrow">H-BRS · Gebaeude C</p>
+        <h1>Welche Raeume sind jetzt frei?</h1>
+        <p class="intro">Stundenplan-Belegung und verliehene Raeume auf einen Blick.</p>
       </div>
-      <div class="clock-card">
+
+      <div class="clock-card" aria-label="Aktuelle Uhrzeit">
         <p><span class="live-dot"></span>Aktueller Stand</p>
         <strong id="liveDate">-</strong>
         <span id="liveTime">-</span>
       </div>
     </header>
 
-    <nav class="app-menu" aria-label="Hauptnavigation">
-      <button class="menu-button active" type="button" data-view="dashboard" aria-selected="true">
-        <span>Raumuebersicht</span>
-        <span id="menuFreeCount" class="menu-count">- frei</span>
-      </button>
-      <button class="menu-button" type="button" data-view="loans" aria-selected="false">
-        <span>Alle Ausleihen</span>
-        <span id="menuLoanCount" class="menu-count">0 offen</span>
-      </button>
-    </nav>
-
-    <main id="dashboardView" class="layout">
-      <section class="panel room-status-panel">
-        <div class="panel-header">
+    <main>
+      <section class="status-panel">
+        <div class="panel-heading">
           <div>
-            <p class="panel-kicker">Heute im Blick</p>
-            <h2>Raumstatus jetzt</h2>
-            <p id="availabilitySummary" class="availability-summary" aria-live="polite"></p>
+            <p class="panel-kicker">Raumstatus jetzt</p>
+            <h2 id="availabilitySummary">Raeume werden geladen ...</h2>
           </div>
-          <div class="stats" id="stats"></div>
+          <div id="stats" class="stats" aria-label="Status-Zusammenfassung"></div>
         </div>
 
         <div class="toolbar">
           <label class="search-field">
-            <span>Suchen</span>
-            <input id="searchInput" type="search" placeholder="z. B. C115 oder C130">
+            <span>Raum suchen</span>
+            <input id="searchInput" type="search" placeholder="z. B. C115" autocomplete="off">
           </label>
 
-          <label>
-            <span>Gebaeude</span>
-            <select id="buildingFilter">
-              <option value="all">Alle</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Status</span>
+          <label class="filter-field">
+            <span>Status anzeigen</span>
             <select id="statusFilter">
-              <option value="all">Alle</option>
-              <option value="free">Frei</option>
-              <option value="loaned">Ausgeliehen</option>
-              <option value="scheduled">Belegt</option>
+              <option value="all">Alle Raeume</option>
+              <option value="free">Nur frei</option>
+              <option value="loaned">Nur verliehen</option>
+              <option value="scheduled">Nur belegt</option>
             </select>
           </label>
         </div>
 
-        <div class="rooms-grid" id="roomsGrid"></div>
-      </section>
-
-      <section id="loanPanel" class="panel loan-panel">
-        <div class="panel-header compact">
-          <div>
-            <p class="panel-kicker">Schnelle Erfassung</p>
-            <h2>Raum ausleihen</h2>
-          </div>
+        <div class="legend" aria-label="Farberklaerung">
+          <span><i class="legend-dot free"></i>Frei</span>
+          <span><i class="legend-dot scheduled"></i>Stundenplan</span>
+          <span><i class="legend-dot loaned"></i>Verliehen</span>
         </div>
 
-        <form id="loanForm" class="stack">
-          <label>
-            <span>Raum</span>
-            <select id="loanRoom" required></select>
-          </label>
-
-          <label>
-            <span>Wer leiht?</span>
-            <input id="loanPerson" type="text" placeholder="Name oder Team" required>
-          </label>
-
-          <label>
-            <span>Zweck</span>
-            <input id="loanPurpose" type="text" placeholder="Workshop, Besprechung, Event">
-          </label>
-
-          <label>
-            <span>Notiz</span>
-            <textarea id="loanNotes" rows="3" placeholder="Optional"></textarea>
-          </label>
-
-          <button type="submit" class="primary-btn">Ausleihe speichern</button>
-        </form>
-
-        <div class="subsection">
-          <h3>Heutige offene Ausleihen</h3>
-          <div id="openLoansToday" class="list active-loans-list"></div>
-        </div>
+        <div id="roomsGrid" class="rooms-grid" aria-live="polite"></div>
+        <p id="saveMessage" class="save-message" role="status" aria-live="polite"></p>
       </section>
     </main>
 
-    <section id="loanHistoryView" class="panel history-view" hidden>
-      <div class="panel-header history-view-header">
-        <div>
-          <p class="panel-kicker">Dauerhaft gespeichert</p>
-          <h2>Alle Ausleihen</h2>
-          <p class="history-intro">Hier stehen alle offenen und bereits zurueckgegebenen Raumausleihen.</p>
-        </div>
-        <div class="history-controls">
-          <label class="history-search">
-            <span>Suchen</span>
-            <input id="loanHistorySearch" type="search" placeholder="Name, Notiz, Raum oder Datum" autocomplete="off">
-          </label>
-          <label class="history-filter">
-            <span>Status</span>
-            <select id="loanHistoryFilter">
-              <option value="all">Alle</option>
-              <option value="open">Noch ausgeliehen</option>
-              <option value="returned">Zurueckgegeben</option>
-            </select>
-          </label>
-        </div>
-      </div>
-      <div id="loanHistory" class="list loan-history-list"></div>
-    </section>
-
+    <footer>
+      <p>Der Stundenplan wird einmal pro Semester aktualisiert. Rot markierte Raeume sind aktuell verliehen.</p>
+    </footer>
   </div>
 
   <template id="roomCardTemplate">
     <article class="room-card">
       <div class="room-card-top">
         <div>
-          <p class="room-building"></p>
+          <p class="room-building">Gebaeude C</p>
           <h3 class="room-name"></h3>
         </div>
         <span class="room-badge"></span>
       </div>
-      <p class="room-detail"></p>
-      <p class="room-next"></p>
-      <div class="room-card-actions"></div>
+      <div class="room-information">
+        <p class="room-detail"></p>
+        <p class="room-next"></p>
+      </div>
+      <button class="room-action" type="button"></button>
     </article>
   </template>
 

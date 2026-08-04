@@ -1,5 +1,5 @@
 window.EVA2_SCHEDULE = {
-  "generatedAt": "2026-07-20T17:09:18",
+  "generatedAt": "2026-08-04T11:17:25+02:00",
   "source": "https://eva2.inf.h-brs.de/stundenplan/",
   "rooms": {
     "St-C115": [
@@ -152,19 +152,6 @@ window.EVA2_SCHEDULE = {
         "room": "St-C116",
         "weekday": "Mo",
         "weekdayIndex": 1,
-        "startTime": "10:00",
-        "endTime": "11:30",
-        "title": "Algebraische Strukturen (V)",
-        "who": "Müller",
-        "startDate": "2026-09-28",
-        "endDate": "2027-01-18",
-        "weekMode": "all",
-        "periodLabel": "28.09.2026-18.01.2027 (KW 40-04)"
-      },
-      {
-        "room": "St-C116",
-        "weekday": "Mo",
-        "weekdayIndex": 1,
         "startTime": "16:00",
         "endTime": "17:30",
         "title": "Moderne Datawarehouse Architekturen als Basis für Big Data (V)",
@@ -199,19 +186,6 @@ window.EVA2_SCHEDULE = {
         "endDate": "2027-01-19",
         "weekMode": "all",
         "periodLabel": "29.09.2026-19.01.2027 (KW 40-04)"
-      },
-      {
-        "room": "St-C116",
-        "weekday": "Mi",
-        "weekdayIndex": 3,
-        "startTime": "10:00",
-        "endTime": "11:30",
-        "title": "Algebraische Strukturen (V)",
-        "who": "Müller",
-        "startDate": "2026-09-30",
-        "endDate": "2027-01-20",
-        "weekMode": "all",
-        "periodLabel": "30.09.2026-20.01.2027 (KW 40-04)"
       },
       {
         "room": "St-C116",
@@ -388,6 +362,19 @@ window.EVA2_SCHEDULE = {
         "room": "St-C117",
         "weekday": "Do",
         "weekdayIndex": 4,
+        "startTime": "10:00",
+        "endTime": "13:15",
+        "title": "Software Supply Chain Security (VÜ)",
+        "who": "Dechand",
+        "startDate": "2026-10-01",
+        "endDate": "2027-01-21",
+        "weekMode": "all",
+        "periodLabel": "01.10.2026-21.01.2027 (KW 40-04)"
+      },
+      {
+        "room": "St-C117",
+        "weekday": "Do",
+        "weekdayIndex": 4,
         "startTime": "14:00",
         "endTime": "16:15",
         "title": "Business English for BIS Gr. D (SU)",
@@ -396,19 +383,6 @@ window.EVA2_SCHEDULE = {
         "endDate": "2027-01-21",
         "weekMode": "all",
         "periodLabel": "01.10.2026-21.01.2027 (KW 40-04)"
-      },
-      {
-        "room": "St-C117",
-        "weekday": "Fr",
-        "weekdayIndex": 5,
-        "startTime": "9:00",
-        "endTime": "12:15",
-        "title": "Cloud Security (VÜ)",
-        "who": "Lo Iacono",
-        "startDate": "2026-10-02",
-        "endDate": "2027-01-22",
-        "weekMode": "all",
-        "periodLabel": "02.10.2026-22.01.2027 (KW 40-04)"
       }
     ],
     "St-C118": [
@@ -866,10 +840,10 @@ window.EVA2_SCHEDULE = {
         "endTime": "16:45",
         "title": "Design Thinking (Ruppel) (VÜ)",
         "who": "Ruppel",
-        "startDate": "2026-09-28",
+        "startDate": "2026-10-05",
         "endDate": "2027-01-18",
         "weekMode": "all",
-        "periodLabel": "28.09.2026-18.01.2027 (KW 40-04)"
+        "periodLabel": "05.10.2026-18.01.2027 (KW 41-04)"
       },
       {
         "room": "St-C120",
@@ -961,6 +935,34 @@ window.EVA2_SCHEDULE = {
         "endDate": "2027-01-21",
         "weekMode": "all",
         "periodLabel": "01.10.2026-21.01.2027 (KW 40-04)"
+      }
+    ],
+    "St-C125": [
+      {
+        "room": "St-C125",
+        "weekday": "Do",
+        "weekdayIndex": 4,
+        "startTime": "13:00",
+        "endTime": "17:00",
+        "title": "St-2-2026-10-01 Abdrea Kern (Buchen)",
+        "who": "",
+        "startDate": "2026-10-01",
+        "endDate": "2026-10-01",
+        "weekMode": "all",
+        "periodLabel": "01.10.2026-01.10.2026"
+      },
+      {
+        "room": "St-C125",
+        "weekday": "Fr",
+        "weekdayIndex": 5,
+        "startTime": "8:00",
+        "endTime": "8:30",
+        "title": "St-2-2026-10-02 Andrea Kern (Buchen)",
+        "who": "",
+        "startDate": "2026-10-02",
+        "endDate": "2026-10-02",
+        "weekMode": "all",
+        "periodLabel": "02.10.2026-02.10.2026"
       }
     ],
     "St-C130": [
@@ -1099,9 +1101,22 @@ window.EVA2_SCHEDULE = {
         "weekday": "Fr",
         "weekdayIndex": 5,
         "startTime": "9:00",
-        "endTime": "12:15",
+        "endTime": "11:15",
         "title": "MGT Project 3 (Projekt)",
         "who": "Heiden, Seithe",
+        "startDate": "2026-10-02",
+        "endDate": "2027-01-22",
+        "weekMode": "all",
+        "periodLabel": "02.10.2026-22.01.2027 (KW 40-04)"
+      },
+      {
+        "room": "St-C130",
+        "weekday": "Fr",
+        "weekdayIndex": 5,
+        "startTime": "11:30",
+        "endTime": "13:30",
+        "title": "Advanced Game Development (VÜ)",
+        "who": "Seithe",
         "startDate": "2026-10-02",
         "endDate": "2027-01-22",
         "weekMode": "all",
@@ -1109,7 +1124,5 @@ window.EVA2_SCHEDULE = {
       }
     ]
   },
-  "unavailableRooms": [
-    "St-C125"
-  ]
+  "unavailableRooms": []
 };

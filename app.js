@@ -9,11 +9,7 @@ const ROOMS = [
   "St-C130"
 ];
 
-const STORAGE_KEYS = {
-  loans: "raumverleih-loans",
-  schedules: "raumverleih-schedules"
-};
-
+const LOCAL_STATUS_KEY = "raumstatus-verliehen";
 const IMPORTED_DATA = window.EVA2_SCHEDULE || {
   generatedAt: null,
   rooms: {},
@@ -21,469 +17,222 @@ const IMPORTED_DATA = window.EVA2_SCHEDULE || {
 };
 
 const state = {
-  loans: normalizeLoans(loadState(STORAGE_KEYS.loans)),
-  schedules: loadState(STORAGE_KEYS.schedules)
+  loanedRooms: new Set(),
+  savingRooms: new Set()
 };
-let scheduleVersion = null;
 
 const statsEl = document.querySelector("#stats");
 const roomsGridEl = document.querySelector("#roomsGrid");
-const openLoansTodayEl = document.querySelector("#openLoansToday");
-const loanHistoryEl = document.querySelector("#loanHistory");
+const availabilitySummaryEl = document.querySelector("#availabilitySummary");
 const liveDateEl = document.querySelector("#liveDate");
 const liveTimeEl = document.querySelector("#liveTime");
-const template = document.querySelector("#roomCardTemplate");
-const dashboardView = document.querySelector("#dashboardView");
-const loanHistoryView = document.querySelector("#loanHistoryView");
-const menuButtons = document.querySelectorAll("[data-view]");
-const menuFreeCountEl = document.querySelector("#menuFreeCount");
-const menuLoanCountEl = document.querySelector("#menuLoanCount");
-const availabilitySummaryEl = document.querySelector("#availabilitySummary");
-const loanPanelEl = document.querySelector("#loanPanel");
-
 const searchInput = document.querySelector("#searchInput");
-const buildingFilter = document.querySelector("#buildingFilter");
 const statusFilter = document.querySelector("#statusFilter");
-const loanHistorySearch = document.querySelector("#loanHistorySearch");
-const loanHistoryFilter = document.querySelector("#loanHistoryFilter");
+const saveMessageEl = document.querySelector("#saveMessage");
+const template = document.querySelector("#roomCardTemplate");
 
-const loanForm = document.querySelector("#loanForm");
-const loanRoomSelect = document.querySelector("#loanRoom");
-const loanPersonInput = document.querySelector("#loanPerson");
+let statusRequestRunning = false;
+let messageTimer = null;
 
 init();
 
 async function init() {
-  await loadLoansFromFile();
-  populateRoomSelects();
-  populateBuildingFilter();
+  loadLocalStatus();
   bindEvents();
-  showView(getViewFromHash(), false);
-  render();
   updateClock();
-  await checkForScheduleUpdate();
-  setInterval(() => {
+  render();
+  await refreshRoomStatus();
+
+  window.setInterval(() => {
     updateClock();
-    renderRooms();
-    renderStats();
-    renderOpenLoansToday();
-    renderLoanHistory();
-    renderLoanRoomOptions();
-    checkForScheduleUpdate();
-  }, 1000 * 30);
+    render();
+  }, 30_000);
+
+  window.setInterval(refreshRoomStatus, 15_000);
 }
 
 function bindEvents() {
   searchInput.addEventListener("input", renderRooms);
-  buildingFilter.addEventListener("change", renderRooms);
   statusFilter.addEventListener("change", renderRooms);
-  loanHistorySearch.addEventListener("input", renderLoanHistory);
-  loanHistoryFilter.addEventListener("change", renderLoanHistory);
-  menuButtons.forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.view));
-  });
-  window.addEventListener("hashchange", () => showView(getViewFromHash(), false));
-
-  loanForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    const now = new Date();
-    const selectedRoom = document.querySelector("#loanRoom").value;
-
-    if (!selectedRoom || getRoomStatus(selectedRoom, now).type !== "free") {
-      window.alert("Dieser Raum ist aktuell nicht frei. Bitte einen anderen Raum auswaehlen.");
-      renderLoanRoomOptions();
-      return;
-    }
-
-    const loan = {
-      id: crypto.randomUUID(),
-      room: selectedRoom,
-      person: document.querySelector("#loanPerson").value.trim(),
-      purpose: document.querySelector("#loanPurpose").value.trim(),
-      start: now.toISOString(),
-      returnedAt: null,
-      notes: document.querySelector("#loanNotes").value.trim()
-    };
-
-    state.loans.push(loan);
-    await persistLoans();
-    loanForm.reset();
-    render();
-  });
-
-}
-
-function getViewFromHash() {
-  if (window.location.hash === "#ausleihen") {
-    return "loans";
-  }
-  return "dashboard";
-}
-
-function showView(view, updateHash = true) {
-  const activeView = ["dashboard", "loans"].includes(view) ? view : "dashboard";
-  dashboardView.hidden = activeView !== "dashboard";
-  loanHistoryView.hidden = activeView !== "loans";
-
-  menuButtons.forEach((button) => {
-    const isActive = button.dataset.view === activeView;
-    button.classList.toggle("active", isActive);
-    button.setAttribute("aria-selected", String(isActive));
-  });
-
-  if (updateHash) {
-    const hashes = {
-      dashboard: "#uebersicht",
-      loans: "#ausleihen"
-    };
-    const nextHash = hashes[activeView];
-    if (window.location.hash !== nextHash) {
-      window.history.pushState(null, "", nextHash);
-    }
-  }
-
-  if (activeView === "loans") {
-    renderLoanHistory();
-  }
 }
 
 function render() {
   renderStats();
   renderRooms();
-  renderOpenLoansToday();
-  renderLoanHistory();
-  renderLoanRoomOptions();
 }
 
 function renderStats() {
   const now = new Date();
   const statuses = ROOMS.map((room) => getRoomStatus(room, now));
   const totals = {
-    total: ROOMS.length,
-    free: statuses.filter((entry) => entry.type === "free").length,
-    loaned: statuses.filter((entry) => entry.type === "loaned").length,
-    scheduled: statuses.filter((entry) => entry.type === "scheduled").length
+    free: statuses.filter((status) => status.type === "free").length,
+    scheduled: statuses.filter((status) => status.type === "scheduled").length,
+    loaned: statuses.filter((status) => status.type === "loaned").length
   };
-  const openLoanCount = state.loans.filter((loan) => isLoanOpenAt(loan, now)).length;
-
-  menuFreeCountEl.textContent = `${totals.free} frei`;
-  menuLoanCountEl.textContent = `${openLoanCount} offen`;
 
   if (totals.free === ROOMS.length) {
-    availabilitySummaryEl.textContent = `Alle ${ROOMS.length} Raeume sind aktuell frei.`;
-  } else if (!totals.free) {
+    availabilitySummaryEl.textContent = `Alle ${ROOMS.length} Raeume sind frei.`;
+  } else if (totals.free === 0) {
     availabilitySummaryEl.textContent = "Aktuell ist kein Raum frei.";
   } else {
-    availabilitySummaryEl.textContent = `${totals.free} von ${ROOMS.length} Raeumen sind aktuell frei.`;
+    availabilitySummaryEl.textContent = `${totals.free} von ${ROOMS.length} Raeumen sind frei.`;
   }
 
   statsEl.innerHTML = "";
   [
-    ["total", "Gesamt", totals.total],
     ["free", "Frei", totals.free],
-    ["loaned", "Ausgeliehen", totals.loaned],
-    ["scheduled", "Belegt", totals.scheduled]
-  ].forEach(([key, label, value]) => {
+    ["scheduled", "Belegt", totals.scheduled],
+    ["loaned", "Verliehen", totals.loaned]
+  ].forEach(([type, label, value]) => {
     const card = document.createElement("div");
-    card.className = `stat-card stat-${key}`;
+    card.className = `stat-card ${type}`;
     card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
     statsEl.appendChild(card);
   });
 }
 
 function renderRooms() {
-  roomsGridEl.innerHTML = "";
-
   const now = new Date();
-  const buildingValue = buildingFilter.value;
-  const searchValue = searchInput.value.trim().toLowerCase();
-  const statusValue = statusFilter.value;
+  const query = searchInput.value.trim().toLowerCase();
+  const selectedStatus = statusFilter.value;
+  const statusOrder = { free: 0, scheduled: 1, loaned: 2 };
 
   const rooms = ROOMS
     .map((room) => ({ room, status: getRoomStatus(room, now) }))
     .filter(({ room, status }) => {
-      const building = getBuilding(room);
-      const matchesBuilding = buildingValue === "all" || building === buildingValue;
-      const matchesSearch = !searchValue || room.toLowerCase().includes(searchValue);
-      const matchesStatus = statusValue === "all" || status.type === statusValue;
-      return matchesBuilding && matchesSearch && matchesStatus;
+      const roomName = displayRoom(room).toLowerCase();
+      const matchesQuery = !query || room.toLowerCase().includes(query) || roomName.includes(query);
+      const matchesStatus = selectedStatus === "all" || status.type === selectedStatus;
+      return matchesQuery && matchesStatus;
     })
     .sort((left, right) => {
-      const order = { free: 0, scheduled: 1, loaned: 2 };
-      return order[left.status.type] - order[right.status.type] || left.room.localeCompare(right.room);
+      return statusOrder[left.status.type] - statusOrder[right.status.type]
+        || left.room.localeCompare(right.room);
     });
 
+  roomsGridEl.innerHTML = "";
   if (!rooms.length) {
-    roomsGridEl.innerHTML = `<p class="empty-state">Keine Raeume fuer den aktuellen Filter gefunden.</p>`;
+    roomsGridEl.innerHTML = '<p class="empty-state">Keine passenden Raeume gefunden.</p>';
     return;
   }
 
   rooms.forEach(({ room, status }) => {
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.classList.add(status.type);
-    node.querySelector(".room-building").textContent = getBuilding(room);
-    node.querySelector(".room-name").textContent = room;
-    node.querySelector(".room-badge").textContent = status.label;
-    node.querySelector(".room-detail").textContent = status.detail;
-    node.querySelector(".room-next").textContent = status.next;
+    const card = template.content.firstElementChild.cloneNode(true);
+    const actionButton = card.querySelector(".room-action");
+    const isSaving = state.savingRooms.has(room);
+
+    card.classList.add(status.type);
+    card.querySelector(".room-name").textContent = displayRoom(room);
+    card.querySelector(".room-badge").textContent = status.label;
+    card.querySelector(".room-detail").textContent = status.detail;
+    card.querySelector(".room-next").textContent = status.next;
 
     if (status.type === "loaned") {
-      const returnButton = document.createElement("button");
-      returnButton.type = "button";
-      returnButton.className = "room-return-btn";
-      returnButton.textContent = "Raum abgeben";
-      returnButton.addEventListener("click", () => returnLoan(status.loanId));
-      node.querySelector(".room-card-actions").appendChild(returnButton);
+      actionButton.textContent = isSaving ? "Wird gespeichert ..." : "Zurueckgegeben";
+      actionButton.classList.add("return-action");
+      actionButton.disabled = isSaving;
+      actionButton.addEventListener("click", () => setLoanedStatus(room, false));
+    } else if (status.type === "free") {
+      actionButton.textContent = isSaving ? "Wird gespeichert ..." : "Als verliehen markieren";
+      actionButton.classList.add("loan-action");
+      actionButton.disabled = isSaving;
+      actionButton.addEventListener("click", () => setLoanedStatus(room, true));
+    } else {
+      actionButton.textContent = "Durch Stundenplan belegt";
+      actionButton.disabled = true;
     }
 
-    if (status.type === "free") {
-      const loanButton = document.createElement("button");
-      loanButton.type = "button";
-      loanButton.className = "room-loan-btn";
-      loanButton.textContent = "Diesen Raum ausleihen";
-      loanButton.addEventListener("click", () => beginLoanForRoom(room));
-      node.querySelector(".room-card-actions").appendChild(loanButton);
-    }
-
-    roomsGridEl.appendChild(node);
+    roomsGridEl.appendChild(card);
   });
 }
 
-function beginLoanForRoom(room) {
-  showView("dashboard");
-  renderLoanRoomOptions();
-  loanRoomSelect.value = room;
-  loanPanelEl.scrollIntoView({ behavior: "smooth", block: "start" });
-  loanPanelEl.classList.add("attention");
-  window.setTimeout(() => loanPanelEl.classList.remove("attention"), 1200);
-  loanPersonInput.focus({ preventScroll: true });
-}
-
-function renderOpenLoansToday() {
-  const now = new Date();
-  const openLoans = state.loans
-    .filter((loan) => isLoanOpenAt(loan, now) && isSameLocalDay(new Date(loan.start), now))
-    .sort((a, b) => new Date(b.start) - new Date(a.start));
-
-  openLoansTodayEl.innerHTML = "";
-
-  if (!openLoans.length) {
-    openLoansTodayEl.innerHTML = '<p class="empty-state">Heute gibt es keine offenen Ausleihen.</p>';
+async function setLoanedStatus(room, loaned) {
+  if (state.savingRooms.has(room)) {
     return;
   }
 
-  openLoans.forEach((loan) => {
-    const item = document.createElement("article");
-    item.className = "list-item active-loan-item";
-
-    const information = document.createElement("div");
-    information.className = "active-loan-info";
-
-    const room = document.createElement("strong");
-    room.textContent = loan.room;
-
-    const person = document.createElement("span");
-    person.textContent = loan.purpose ? `${loan.person} | ${loan.purpose}` : loan.person;
-
-    const start = document.createElement("span");
-    start.textContent = `Ausgeliehen seit ${formatTime(loan.start)} Uhr`;
-
-    const returnButton = document.createElement("button");
-    returnButton.type = "button";
-    returnButton.textContent = "Raum abgeben";
-    returnButton.addEventListener("click", () => returnLoan(loan.id));
-
-    information.append(room, person, start);
-    item.append(information, returnButton);
-    openLoansTodayEl.appendChild(item);
-  });
-}
-
-function renderLoanHistory() {
-  const filter = loanHistoryFilter.value;
-  const query = loanHistorySearch.value.trim().toLocaleLowerCase("de-DE");
-  const loans = [...state.loans]
-    .filter((loan) => {
-      if (filter === "open") {
-        return !loan.returnedAt;
-      }
-      if (filter === "returned") {
-        return Boolean(loan.returnedAt);
-      }
-      return true;
-    })
-    .filter((loan) => matchesLoanHistorySearch(loan, query))
-    .sort((a, b) => new Date(b.start) - new Date(a.start));
-
-  loanHistoryEl.innerHTML = "";
-
-  if (!loans.length) {
-    loanHistoryEl.innerHTML = '<p class="empty-state">Keine passenden Ausleihen gefunden.</p>';
-    return;
-  }
-
-  loans.forEach((loan) => {
-    const item = document.createElement("article");
-    item.className = "list-item loan-history-entry";
-
-    const heading = document.createElement("div");
-    heading.className = "loan-history-heading";
-
-    const room = document.createElement("strong");
-    room.textContent = loan.room;
-
-    const status = document.createElement("span");
-    status.className = `loan-history-status ${loan.returnedAt ? "returned" : "open"}`;
-    status.textContent = loan.returnedAt ? "Zurueckgegeben" : "Noch ausgeliehen";
-    heading.append(room, status);
-
-    const details = document.createElement("div");
-    details.className = "loan-history-details";
-
-    const person = document.createElement("span");
-    person.textContent = `Ausgeliehen an: ${loan.person}`;
-
-    const purpose = document.createElement("span");
-    purpose.textContent = `Zweck: ${loan.purpose || "-"}`;
-
-    const start = document.createElement("span");
-    start.textContent = `Beginn: ${formatDateTime(loan.start)}`;
-
-    const end = document.createElement("span");
-    end.textContent = `Rueckgabe: ${loan.returnedAt ? formatDateTime(loan.returnedAt) : "noch offen"}`;
-
-    details.append(person, purpose, start, end);
-
-    if (loan.notes) {
-      const notes = document.createElement("span");
-      notes.className = "loan-history-notes";
-      notes.textContent = `Notiz: ${loan.notes}`;
-      details.appendChild(notes);
-    }
-
-    item.append(heading, details);
-    loanHistoryEl.appendChild(item);
-  });
-}
-
-function matchesLoanHistorySearch(loan, query) {
-  if (!query) {
-    return true;
-  }
-
-  const searchableValues = [
-    loan.person,
-    loan.notes,
-    loan.room,
-    loan.start,
-    formatDateTime(loan.start),
-    loan.returnedAt,
-    loan.returnedAt ? formatDateTime(loan.returnedAt) : ""
-  ];
-
-  return searchableValues.some((value) => String(value || "").toLocaleLowerCase("de-DE").includes(query));
-}
-
-async function checkForScheduleUpdate() {
-  try {
-    const response = await fetch("/api/health", { cache: "no-store" });
-    if (!response.ok) {
-      return;
-    }
-
-    const health = await response.json();
-    if (!health.scheduleVersion) {
-      return;
-    }
-
-    if (scheduleVersion && scheduleVersion !== health.scheduleVersion) {
-      reloadPageWithCacheBuster();
-      return;
-    }
-
-    scheduleVersion = health.scheduleVersion;
-  } catch {
-    // Die Raumansicht bleibt nutzbar, falls der Gesundheitscheck voruebergehend fehlschlaegt.
-  }
-}
-
-function reloadPageWithCacheBuster() {
-  const reloadUrl = new URL(window.location.origin);
-  reloadUrl.searchParams.set("sync", Date.now().toString());
-  window.location.replace(reloadUrl);
-}
-
-async function returnLoan(id) {
-  const loan = state.loans.find((entry) => entry.id === id);
-  if (!loan) {
-    return;
-  }
-
-  const returnDateTime = new Date();
-  if (returnDateTime <= new Date(loan.start)) {
-    window.alert("Die Rueckgabe muss nach dem Ausleihbeginn liegen.");
-    return;
-  }
-
-  state.loans = state.loans.map((entry) =>
-    entry.id === id
-      ? { ...entry, returnedAt: returnDateTime.toISOString() }
-      : entry
-  );
-  await persistLoans();
+  const previousRooms = new Set(state.loanedRooms);
+  state.savingRooms.add(room);
+  loaned ? state.loanedRooms.add(room) : state.loanedRooms.delete(room);
   render();
+
+  if (window.location.protocol === "file:") {
+    saveLocalStatus();
+    state.savingRooms.delete(room);
+    showMessage("Status wurde auf diesem Geraet gespeichert.", "success");
+    render();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/room-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room, loaned })
+    });
+
+    if (!response.ok) {
+      throw new Error("Status konnte nicht gespeichert werden.");
+    }
+
+    const payload = await response.json();
+    state.loanedRooms = normalizeLoanedRooms(payload.loanedRooms);
+    saveLocalStatus();
+    showMessage(loaned ? `${displayRoom(room)} ist jetzt rot markiert.` : `${displayRoom(room)} ist wieder freigegeben.`, "success");
+  } catch (error) {
+    state.loanedRooms = previousRooms;
+    showMessage("Speichern fehlgeschlagen. Bitte die Seite neu laden und erneut versuchen.", "error");
+  } finally {
+    state.savingRooms.delete(room);
+    render();
+  }
+}
+
+async function refreshRoomStatus() {
+  if (statusRequestRunning || window.location.protocol === "file:") {
+    return;
+  }
+
+  statusRequestRunning = true;
+  try {
+    const response = await fetch(`/api/room-status?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Raumstatus konnte nicht geladen werden.");
+    }
+
+    const payload = await response.json();
+    state.loanedRooms = normalizeLoanedRooms(payload.loanedRooms);
+    saveLocalStatus();
+    render();
+  } catch (error) {
+    showMessage("Serverstatus ist gerade nicht erreichbar. Der letzte Stand wird angezeigt.", "error");
+  } finally {
+    statusRequestRunning = false;
+  }
 }
 
 function getRoomStatus(room, now) {
-  const activeLoan = state.loans.find((loan) => loan.room === room && isLoanOpenAt(loan, now));
-  if (activeLoan) {
+  if (state.loanedRooms.has(room)) {
     return {
       type: "loaned",
-      loanId: activeLoan.id,
-      label: "Ausgeliehen",
-      detail: `${activeLoan.person}${activeLoan.purpose ? ` | ${activeLoan.purpose}` : ""}`,
-      next: `Seit ${formatTime(activeLoan.start)} Uhr | Ende bei Rueckgabe`
+      label: "Verliehen",
+      detail: "Dieser Raum ist aktuell verliehen.",
+      next: "Nach der Rueckgabe wieder freigeben."
     };
   }
 
-  const activeImported = getImportedEntries(room).find((entry) => matchesImportedSlot(entry, now));
-  if (activeImported) {
-    const occupiedUntil = dateAtTime(now, activeImported.endTime);
+  const activeEntry = getImportedEntries(room).find((entry) => matchesImportedSlot(entry, now));
+  if (activeEntry) {
+    const occupiedUntil = dateAtTime(now, activeEntry.endTime);
     return {
       type: "scheduled",
-      label: "Besetzt",
-      detail: `Noch ${formatDuration(occupiedUntil - now)} besetzt`,
-      next: `Besetzt bis ${formatTime(occupiedUntil)} Uhr`
+      label: "Belegt",
+      detail: `Noch ${formatDuration(occupiedUntil - now)} belegt`,
+      next: `Belegt bis ${formatTime(occupiedUntil)} Uhr`
     };
   }
 
-  const activeManual = state.schedules.find((entry) => entry.room === room && matchesWeeklySlot(entry, now));
-  if (activeManual) {
-    const occupiedUntil = dateAtTime(now, activeManual.end);
-    return {
-      type: "scheduled",
-      label: "Besetzt",
-      detail: `Noch ${formatDuration(occupiedUntil - now)} besetzt`,
-      next: `Besetzt bis ${formatTime(occupiedUntil)} Uhr`
-    };
-  }
-
-  const nextLoan = [...state.loans]
-    .filter((loan) => loan.room === room && !loan.returnedAt && new Date(loan.start) > now)
-    .sort((a, b) => new Date(a.start) - new Date(b.start))[0];
-
-  const nextImported = getNextImportedSlot(room, now);
-  const nextManual = getNextManualSlot(room, now);
-  const nextEvent = pickSoonestEvent([
-    nextLoan
-      ? {
-          date: new Date(nextLoan.start)
-        }
-      : null,
-    nextImported,
-    nextManual
-  ]);
+  const nextEvent = getNextImportedSlot(room, now);
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
   const freeUntil = nextEvent && isSameLocalDay(nextEvent.date, now) ? nextEvent.date : endOfToday;
@@ -501,87 +250,30 @@ function getImportedEntries(room) {
 }
 
 function getNextImportedSlot(room, now) {
-  const nextEntries = getImportedEntries(room)
+  const entries = getImportedEntries(room)
     .map((entry) => {
       const date = nextImportedOccurrence(entry, now);
-      if (!date) {
-        return null;
-      }
-
-      return {
-        date
-      };
+      return date ? { date } : null;
     })
     .filter(Boolean)
-    .sort((a, b) => a.date - b.date);
+    .sort((left, right) => left.date - right.date);
 
-  return nextEntries[0] || null;
-}
-
-function getNextManualSlot(room, now) {
-  const weeklySlots = state.schedules
-    .filter((entry) => entry.room === room)
-    .map((entry) => ({
-      date: nextManualOccurrence(entry, now)
-    }))
-    .filter((entry) => entry.date)
-    .sort((a, b) => a.date - b.date);
-
-  return weeklySlots[0] || null;
-}
-
-function pickSoonestEvent(events) {
-  return events.filter(Boolean).sort((a, b) => a.date - b.date)[0] || null;
-}
-
-function matchesWeeklySlot(entry, now) {
-  if (entry.day !== now.getDay()) {
-    return false;
-  }
-
-  const current = formatTimeInput(now);
-  return current >= entry.start && current < entry.end;
+  return entries[0] || null;
 }
 
 function matchesImportedSlot(entry, now) {
   if (entry.weekdayIndex !== now.getDay()) {
     return false;
   }
-
   if (!isDateWithinRange(now, entry.startDate, entry.endDate)) {
     return false;
   }
-
   if (!matchesWeekMode(now, entry.weekMode)) {
     return false;
   }
 
-  const current = formatTimeInput(now);
-  return current >= entry.startTime && current < entry.endTime;
-}
-
-function nextManualOccurrence(entry, now) {
-  const next = new Date(now);
-  next.setSeconds(0, 0);
-
-  for (let offset = 0; offset <= 14; offset += 1) {
-    const candidate = new Date(next);
-    candidate.setDate(candidate.getDate() + offset);
-    candidate.setHours(0, 0, 0, 0);
-
-    if (candidate.getDay() !== entry.day) {
-      continue;
-    }
-
-    const [hours, minutes] = entry.start.split(":").map(Number);
-    candidate.setHours(hours, minutes, 0, 0);
-
-    if (candidate > now) {
-      return candidate;
-    }
-  }
-
-  return null;
+  const currentTime = formatTimeInput(now);
+  return currentTime >= entry.startTime && currentTime < entry.endTime;
 }
 
 function nextImportedOccurrence(entry, now) {
@@ -597,18 +289,12 @@ function nextImportedOccurrence(entry, now) {
     if (candidate < startBoundary || candidate > endBoundary) {
       continue;
     }
-
-    if (candidate.getDay() !== entry.weekdayIndex) {
-      continue;
-    }
-
-    if (!matchesWeekMode(candidate, entry.weekMode)) {
+    if (candidate.getDay() !== entry.weekdayIndex || !matchesWeekMode(candidate, entry.weekMode)) {
       continue;
     }
 
     const [hours, minutes] = entry.startTime.split(":").map(Number);
     candidate.setHours(hours, minutes, 0, 0);
-
     if (candidate > now) {
       return candidate;
     }
@@ -622,16 +308,8 @@ function matchesWeekMode(date, weekMode) {
     return true;
   }
 
-  const isoWeek = getISOWeek(date);
-  if (weekMode === "even") {
-    return isoWeek % 2 === 0;
-  }
-
-  if (weekMode === "odd") {
-    return isoWeek % 2 === 1;
-  }
-
-  return true;
+  const week = getISOWeek(date);
+  return weekMode === "even" ? week % 2 === 0 : week % 2 === 1;
 }
 
 function getISOWeek(date) {
@@ -639,67 +317,21 @@ function getISOWeek(date) {
   const dayNumber = target.getUTCDay() || 7;
   target.setUTCDate(target.getUTCDate() + 4 - dayNumber);
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-  return Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
+  return Math.ceil((((target - yearStart) / 86_400_000) + 1) / 7);
 }
 
 function isDateWithinRange(date, startDate, endDate) {
   const current = new Date(date);
   current.setHours(0, 0, 0, 0);
-
   const start = parseLocalDate(startDate);
   const end = parseLocalDate(endDate);
   end.setHours(23, 59, 59, 999);
-
   return current >= start && current <= end;
 }
 
 function parseLocalDate(value) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
-}
-
-function populateRoomSelects() {
-  renderLoanRoomOptions();
-}
-
-function renderLoanRoomOptions() {
-  const select = loanRoomSelect;
-  const submitButton = loanForm.querySelector('button[type="submit"]');
-  const selectedRoom = select.value;
-  const now = new Date();
-  const freeRooms = ROOMS.filter((room) => getRoomStatus(room, now).type === "free");
-
-  if (!freeRooms.length) {
-    select.innerHTML = '<option value="">Aktuell ist kein Raum frei</option>';
-    select.disabled = true;
-    submitButton.disabled = true;
-    return;
-  }
-
-  select.innerHTML = freeRooms.map((room) => `<option value="${room}">${room}</option>`).join("");
-  select.disabled = false;
-  submitButton.disabled = false;
-
-  if (freeRooms.includes(selectedRoom)) {
-    select.value = selectedRoom;
-  }
-}
-
-function populateBuildingFilter() {
-  const buildings = [...new Set(ROOMS.map(getBuilding))];
-  buildings.forEach((building) => {
-    const option = document.createElement("option");
-    option.value = building;
-    option.textContent = building;
-    buildingFilter.appendChild(option);
-  });
-}
-
-function getBuilding(room) {
-  if (room.startsWith("St-C")) {
-    return "Gebaeude C";
-  }
-  return "Sonstige";
 }
 
 function updateClock() {
@@ -710,100 +342,44 @@ function updateClock() {
     month: "long",
     year: "numeric"
   });
-  liveTimeEl.textContent = now.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  liveTimeEl.textContent = `${formatTime(now)} Uhr`;
 }
 
-function loadState(key) {
+function displayRoom(room) {
+  return room.replace("St-", "");
+}
+
+function normalizeLoanedRooms(value) {
+  const rooms = Array.isArray(value) ? value : [];
+  return new Set(rooms.filter((room) => ROOMS.includes(room)));
+}
+
+function loadLocalStatus() {
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
+    state.loanedRooms = normalizeLoanedRooms(JSON.parse(localStorage.getItem(LOCAL_STATUS_KEY) || "[]"));
+  } catch (error) {
+    state.loanedRooms = new Set();
   }
 }
 
-function persistState(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+function saveLocalStatus() {
+  localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify([...state.loanedRooms]));
 }
 
-async function loadLoansFromFile() {
-  try {
-    const response = await fetch("/api/loans", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("Ausleihdatei konnte nicht geladen werden.");
-    }
-
-    const fileLoans = await response.json();
-    if (!Array.isArray(fileLoans)) {
-      throw new Error("Ausleihdatei hat ein ungueltiges Format.");
-    }
-
-    const mergedLoans = new Map(state.loans.map((loan) => [loan.id, loan]));
-    normalizeLoans(fileLoans).forEach((loan) => mergedLoans.set(loan.id, loan));
-    state.loans = [...mergedLoans.values()];
-    await persistLoans();
-  } catch {
-    persistState(STORAGE_KEYS.loans, state.loans);
-  }
-}
-
-async function persistLoans() {
-  persistState(STORAGE_KEYS.loans, state.loans);
-
-  try {
-    const response = await fetch("/api/loans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.loans)
-    });
-
-    if (!response.ok) {
-      throw new Error("Ausleihdatei konnte nicht gespeichert werden.");
-    }
-
-    return true;
-  } catch {
-    window.alert("Die Ausleihe konnte nicht in der Datei gespeichert werden.");
-    return false;
-  }
-}
-
-function normalizeLoans(loans) {
-  const now = new Date();
-
-  return loans.map((loan) => {
-    if (Object.hasOwn(loan, "returnedAt")) {
-      return loan;
-    }
-
-    const oldEnd = loan.end ? new Date(loan.end) : null;
-    return {
-      ...loan,
-      returnedAt: oldEnd && oldEnd <= now ? loan.end : null
-    };
-  });
-}
-
-function isLoanOpenAt(loan, now) {
-  return new Date(loan.start) <= now && !loan.returnedAt;
+function showMessage(message, type) {
+  window.clearTimeout(messageTimer);
+  saveMessageEl.textContent = message;
+  saveMessageEl.className = `save-message ${type}`;
+  messageTimer = window.setTimeout(() => {
+    saveMessageEl.textContent = "";
+    saveMessageEl.className = "save-message";
+  }, 4_000);
 }
 
 function isSameLocalDay(left, right) {
   return left.getFullYear() === right.getFullYear()
     && left.getMonth() === right.getMonth()
     && left.getDate() === right.getDate();
-}
-
-function formatDateTime(value) {
-  return new Date(value).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
 }
 
 function formatTime(value) {
@@ -827,13 +403,12 @@ function dateAtTime(date, time) {
 }
 
 function formatDuration(milliseconds) {
-  const totalMinutes = Math.max(1, Math.ceil(milliseconds / 60000));
+  const totalMinutes = Math.max(1, Math.ceil(milliseconds / 60_000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
 
   if (!hours) {
     return `${minutes} Min.`;
   }
-
   return minutes ? `${hours} Std. ${minutes} Min.` : `${hours} Std.`;
 }
